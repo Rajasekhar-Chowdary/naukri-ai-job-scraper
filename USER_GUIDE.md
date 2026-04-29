@@ -1,45 +1,252 @@
-# User Guide: Dream Hunt Dashboard
+# User Guide — Dream Hunt Dashboard
 
-Welcome to the Dream Hunt application. This guide will help you understand how to configure your profile, run the scraper, and interact with the AI-powered dashboard.
+This guide walks you through every page of the Dream Hunt application, explains what each control does, and shares best practices for getting the most out of the AI scoring system.
 
-## 1. Initial Setup
+---
 
-Before using the app, you need to provide it with your context.
+## Table of Contents
 
-1. **Add Your Resume**: Place your current resume (PDF format) directly into the `data/` folder. The AI reads this file to extract your professional background and generate a semantic summary for matching.
-2. **Configure Your Profile**: The application uses `config/profile_config.json`. The dashboard allows you to manage most of this via the UI, but it includes:
-   - `target_roles`: A list of job titles you are looking for (e.g., "Senior Data Analyst", "Analytics Engineer").
-   - `min_experience_years`: Your current years of experience.
-   - `profile_keywords`: A list of your specific technical skills.
+- [Initial Setup](#initial-setup)
+- [Launching the App](#launching-the-app)
+- [Home Page](#home-page)
+- [Scraper Page](#scraper-page)
+- [AI Scoring Page](#ai-scoring-page)
+- [Dashboard Page](#dashboard-page)
+- [Best Practices](#best-practices)
+- [FAQ](#faq)
 
-## 2. Page Navigation
+---
 
-### 🕸️ Scraper Page
-This page is your control center for fetching new jobs.
-- **Search Parameters**: Set your target role, location, experience level, and how far back you want to search (e.g., "Last 24 hours").
-- **Max Jobs**: Limit how many jobs the scraper attempts to pull.
-- **Run the Scraper**: Click the large button to start. The scraper will launch an automated browser (running silently in the background if 'Headless' is checked) and navigate Naukri.com. Progress is shown in real-time.
+## Initial Setup
 
-### 🧠 AI Scoring Page
-Once jobs are scraped, this is where you spend most of your time. The AI automatically scores every scraped job against your profile.
+Before running any scrapes you need to give the AI context about who you are.
 
-- **Job Feed**: The main column shows the jobs, sorted by their AI Score. 
-- **Score Breakdown**: Click the `▼ Match Intelligence` toggle on any job card to see exactly *why* a job got its score. The score is broken down into four parts:
-  - Skill Match (Exact skill hits)
-  - Title Relevance (Does the role match your targets?)
-  - Description Match (Semantic alignment with your resume)
-  - Experience Fit (Are you in the required experience range?)
-- **Training the AI**: Under each job, you will see a `👍 Good Fit` and `👎 Bad Fit` button. **Use these!** Clicking them moves the job to your feedback database, which the Random Forest ML model uses to get smarter and adapt to your personal preferences over time.
-- **Skills Management**: At the bottom of the page, you can dynamically add or remove skills from your profile. The AI will instantly recalculate scores based on your new skill set.
+### Step 1 — Add your resume
 
-### 📊 Dashboard Page
-This is your market intelligence center.
-- **Stats Strip**: A quick glance at how many jobs are top matches (>85) vs good matches (>50).
-- **Your Profile vs The Market**: A crucial tool for upskilling. It analyzes the skills requested in all scraped jobs and compares them to your configured skills. It will explicitly list your "Top Missing Skills"—these are the technologies you should consider learning next to increase your marketability.
-- **Hiring Trends**: Shows which companies are currently hiring the most for your role, and in which cities.
-- **Model Status**: Check the "AI Feedback Summary" to see if your ML model is fully trained or if it needs more feedback data.
+Place your current resume (PDF format) directly into the `data/` folder:
 
-## 3. Best Practices
-- **Scrape Frequently**: Job boards move fast. Run the scraper daily using the "Last 24 hours" filter to keep your feed fresh.
-- **Provide Feedback**: The baseline AI is powerful, but the ML model makes it personalized. Try to rate at least 20-30 jobs to give the ML model enough data to activate.
-- **Keep Skills Updated**: If you learn a new tool (e.g., dbt, Snowflake), add it immediately via the Skills Management section on the AI Scoring page to instantly boost your scores for relevant jobs.
+```
+data/
+└── Your_Resume.pdf
+```
+
+The AI reads this file to extract a semantic summary of your background. It uses the first ~300 words of text content, so make sure the most relevant experience and skills appear near the top of your resume. You can also upload the file from inside the app (AI Scoring page → Profile Context section).
+
+### Step 2 — Configure your profile
+
+Open `config/profile_config.json` (copy from `config/profile_config.example.json` if it does not exist yet) and fill in three key fields:
+
+| Field | What to enter |
+|---|---|
+| `target_roles` | The exact job titles you are applying for (e.g. "Senior Data Analyst", "Analytics Engineer") |
+| `min_experience_years` | Your total years of relevant work experience |
+| `profile_keywords` | A flat list of your technical skills — tools, languages, platforms |
+
+The more specific and complete these fields are, the more accurately the AI scores jobs against your profile.
+
+---
+
+## Launching the App
+
+```bash
+python run_dashboard.py
+```
+
+The terminal prints a system status summary (datasets found, last scrape time, skills count, top-matches queue) before opening the app at `http://localhost:8501`.
+
+---
+
+## Home Page
+
+The landing page gives you an at-a-glance status view:
+
+- **Datasets** — number of scraped job CSV files in `data/`
+- **Last Scrape** — timestamp of the most recently modified job file
+- **In Queue** — jobs scored ≥ 85 sitting in `data/top_matches.csv`
+
+The "How it works" cards below summarise the four-step workflow. Use the top navigation bar to switch between pages.
+
+---
+
+## Scraper Page
+
+### Search Configuration
+
+| Control | Description |
+|---|---|
+| **Designation** *(required)* | The job title to search. Be specific — "Data Analyst" returns better results than "Data". |
+| **Location** | City, state, or "India". Leave blank to search all of India. |
+| **Experience (min years)** | Filters jobs requiring at least this many years. Set to 0 to disable. |
+| **Salary (CTC)** | Pre-defined salary brackets. Using this filter significantly reduces result count — only set it if you have a firm requirement. |
+| **Industry** | Sector filter (e.g. "IT - Software", "Banking / Financial Services"). Leave as "Any" for broader results. |
+| **Time Period** | How far back to search. "Last 24 hours" is ideal for daily monitoring; "Any time" is best for a broad initial scan. |
+| **How many jobs?** | Approximate target. Each page yields ~20 jobs; selecting 100 scrapes 5 pages. |
+| **Work Mode** | Filter by On-site, Hybrid, or Remote. Multiple selections are allowed. |
+| **Headless Browser** | When ON (default), Chrome runs silently in the background. Turn it OFF to watch the automation live — useful for debugging or when Naukri shows a CAPTCHA. |
+
+### Running a scrape
+
+Click **🚀 Start Scraping**. A live progress pipeline shows the five stages:
+
+```
+Initializing → Fetching → Parsing → AI Scoring → Saving
+```
+
+Each completed stage turns green. The log line below the pipeline shows the current URL and job count in real time.
+
+When the scrape finishes you will see:
+- Total jobs collected
+- Top matches (score ≥ 85) and good matches (score ≥ 50)
+- The filename the dataset was saved to
+
+### Clear Scrape History
+
+The **🗑️ Clear Scrape History** button deletes all `naukri_*.csv` files from `data/`. This resets the cross-run deduplication system, which means the next scrape will collect all jobs fresh — including ones previously seen.
+
+---
+
+## AI Scoring Page
+
+This is where you spend most of your time.
+
+### Filters
+
+| Control | Effect |
+|---|---|
+| **Search** | Full-text search across job title, company name, and skills |
+| **Min Score** | Slider to hide jobs below a score threshold |
+| **Sort by** | AI Score descending/ascending or Company A-Z |
+| **Company** | Multi-select filter |
+| **Location** | Multi-select filter |
+| **Work Mode** | Filters jobs mentioning Remote / Hybrid / On-site in description or location |
+
+Active filters are shown as chips above the job feed. Changing any filter resets pagination to page 1.
+
+### Job Cards
+
+Each job card shows:
+
+- **Score badge** — colour-coded circle (green ≥ 80, yellow ≥ 50, red < 50)
+- **Match bar** — visual representation of the score
+- **Meta pills** — location, experience range, posted date
+- **Skill tags** — up to 12 skills extracted from the listing
+- **Description excerpt** — the text Naukri shows on the search results page
+
+Click the expander arrow to open a card and see:
+
+- **Score breakdown** — separate bars for Skill Match, Title Relevance, Description Semantic, and Experience Fit
+- **Full description**
+- **Action buttons** — 👍 Good Fit, 👎 Bad Fit, View on Naukri →
+
+### Providing feedback
+
+Every time you click **👍 Good Fit** or **👎 Bad Fit**:
+
+1. The job is saved to `data/applied_jobs.csv` or `data/rejected_jobs.csv`.
+2. The card is marked with ✅ or ❌ so you know you have already rated it.
+3. Once you have rated enough jobs (at least one on each side), click **🔄 Retrain AI Model** in the right panel to train the RandomForest model.
+
+The more feedback you provide, the more personalised the scores become. Aim for 20–30 ratings before retraining for meaningful results.
+
+### Profile Context
+
+- **Experience slider** — adjust your years of experience. The AI uses this to calculate the experience fit signal. Changes save immediately to `config/profile_config.json`.
+- **Resume upload** — drag and drop a PDF here as an alternative to placing it manually in `data/`. Use the ✕ button next to any listed PDF to delete it.
+
+### Right panel
+
+| Widget | Purpose |
+|---|---|
+| **Profile Intelligence** | Skill coverage ring — what % of all unique market skills your profile covers. Lists top missing skills. |
+| **AI Model Status** | Shows whether the ML model is loaded, how many samples it was trained on, and when it was last trained. |
+| **Retrain AI Model** | Triggers `JobAIModel.train()`. On success, clears the Streamlit cache and re-scores all jobs with the updated model. |
+| **Upskill Radar** | The top 5 skills appearing in job listings that are not in your profile — sorted by listing frequency. |
+| **Top Matches** | A count of jobs in `data/top_matches.csv` with a quick preview button. |
+
+### Skills Management
+
+At the bottom of the page:
+
+- **Add skill** — type one skill or a comma-separated list (e.g. `dbt, Snowflake, Airflow`) and click **➕ Add Skill**.
+- **Remove skill** — click any skill tag in the cloud to delete it.
+
+Changes are saved instantly to `config/profile_config.json`. Reload the AI Scoring page (or click Retrain) to see the updated scores.
+
+---
+
+## Dashboard Page
+
+A read-only analytics view of the latest job dataset.
+
+### Score Distribution
+
+A horizontal bar chart breaking jobs into four score bands:
+
+| Band | Score Range |
+|---|---|
+| Low | < 50 |
+| Mid | 50–69 |
+| Good | 70–84 |
+| Top | 85+ |
+
+### Your Profile vs The Market
+
+Two side-by-side panels:
+
+- **Skill Coverage** — a donut chart showing the % of unique market skills you cover, with a list of the top skills you are missing (learn these to improve your scores).
+- **Top Matched Skills** — your skills that appear most frequently in the current dataset, with frequency bars.
+
+### Hiring Trends
+
+- **Top Companies** — the 10 companies posting the most jobs for your search.
+- **Top Locations** — the 10 cities with the most listings.
+
+### Experience Fit
+
+A bar chart of minimum experience requirements across all jobs, with a dashed red line marking your configured experience level. This tells you at a glance how many jobs are slightly above or below your range.
+
+### AI Feedback Summary & Raw Data
+
+- **AI Feedback Summary** — counts of Good Fit / Bad Fit ratings and current model status.
+- **Raw Data** — an interactive table of all scored jobs. Use **Download Full Dataset** to export a CSV with all AI signals (AI_Score, Score_Skill, Score_Title, Score_Desc, Score_Exp).
+
+---
+
+## Best Practices
+
+**Scrape daily with "Last 24 hours".**  
+Job boards move fast. A daily scrape with the 24-hour filter keeps your feed fresh and prevents missing short-listed roles.
+
+**Set specific target roles.**  
+`target_roles: ["Senior Data Analyst"]` scores more accurately than `["Analyst"]`. The title relevance signal compares job titles against your target list using semantic similarity.
+
+**Rate jobs consistently.**  
+The ML model learns your preferences from the pattern of your ratings, not just the score. Rate at least 20–30 jobs before retraining for meaningful personalisation.
+
+**Update skills after learning something new.**  
+Adding a skill (e.g. `dbt`, `Snowflake`) to your profile immediately improves your skill-match score for jobs requiring that skill — no retraining needed.
+
+**Use the Upskill Radar to guide learning.**  
+The radar shows which skills appear most in your target job market but are absent from your profile. Prioritise the top 2–3 for maximum marketability.
+
+**Keep the resume PDF current.**  
+The description semantic signal compares job descriptions against your resume text. An outdated resume degrades this signal. Re-upload after major profile changes.
+
+---
+
+## FAQ
+
+**Q: Can I scrape multiple roles at once?**  
+A: Not from a single run. Run separate scrapes for each role (e.g. "Data Analyst", "Business Analyst"). The dashboard always loads the most recently modified dataset.
+
+**Q: My scrape returned 0 jobs — what happened?**  
+A: Most likely Naukri served a CAPTCHA or the selectors changed. Try running with Headless OFF to watch the browser, and check `logs/app.log` for error details.
+
+**Q: The AI scores seem off — is something wrong?**  
+A: Check that `config/profile_config.json` has at least 5–10 skills in `profile_keywords` and that your `target_roles` match the kinds of jobs you are seeing. Also confirm your resume PDF is in `data/` and is text-based (not a scanned image).
+
+**Q: How do I reset the ML model and start fresh?**  
+A: Delete `data/job_ai_model.pkl`, `data/applied_jobs.csv`, and `data/rejected_jobs.csv`. The app will revert to the baseline scoring mode.
+
+**Q: Why do some jobs show the same score across multiple scrapes?**  
+A: The baseline score is deterministic — the same job with the same profile config always produces the same score. Scores vary after you retrain the ML model with new feedback.
