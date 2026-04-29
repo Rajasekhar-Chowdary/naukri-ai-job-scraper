@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data and Models
+data/*.csv
+data/*.pdf
+data/*.pkl
+data/*.txt
+data/.scrape_session.json
+!data/.gitkeep
+
+# Personal config
+config/profile_config.json
+
+# Logs
+logs/*.log
+!logs/.gitkeep
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDEs
+.idea/
+.vscode/
+.claude/
+
+# pytest
+.pytest_cache/

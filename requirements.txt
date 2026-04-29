@@ -1,0 +1,10 @@
+selenium
+pandas
+streamlit
+plotly
+webdriver-manager
+scikit-learn
+joblib
+pypdf
+pytest
+sentence-transformers

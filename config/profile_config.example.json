@@ -1,0 +1,40 @@
+{
+    "location": "",
+    "pages_per_role": 10,
+    "max_posted_hours": 48,
+    "min_experience_years": 3,
+    "target_roles": [
+        "Data Analyst",
+        "Senior Data Analyst",
+        "Analytics Engineer",
+        "Business Intelligence Developer"
+    ],
+    "profile_keywords": [
+        "Python",
+        "SQL",
+        "Power BI",
+        "Tableau",
+        "Excel",
+        "Data Visualization",
+        "ETL",
+        "Data Modeling",
+        "Statistics",
+        "Pandas",
+        "NumPy",
+        "Machine Learning",
+        "Data Cleaning",
+        "Dashboard Development",
+        "Git"
+    ],
+    "scraper_defaults": {
+        "designation": "Data Analyst",
+        "location": "India",
+        "experience": 3,
+        "salary": "Any",
+        "industry": "Any",
+        "time_period": "Last 3 days",
+        "max_jobs": 100,
+        "work_mode": [],
+        "headless": true
+    }
+}
