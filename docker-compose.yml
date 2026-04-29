@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - JOB_DB_PATH=/app/data/jobs.db
+      - NOTIFY_EMAIL=false
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    command: streamlit run src/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - JOB_DB_PATH=/app/data/jobs.db
+      - NOTIFY_EMAIL=${NOTIFY_EMAIL:-false}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - NOTIFY_EMAIL_TO=${NOTIFY_EMAIL_TO}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    command: python run_scheduler.py
+    restart: unless-stopped
+    depends_on:
+      - dashboard

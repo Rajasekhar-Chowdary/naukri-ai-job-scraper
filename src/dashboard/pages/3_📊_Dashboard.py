@@ -1,78 +1,58 @@
 import streamlit as st
 import pandas as pd
 import os
-import re
 import sys
-from glob import glob
+import re
 import plotly.express as px
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from src.ai.ai_opportunity_finder import JobAIModel
+from src.database import init_db, get_jobs, get_stats, get_feedback_counts
 from src.dashboard.design import inject_css, page_header, top_nav
 
-st.set_page_config(
-    page_title="Dashboard — Dream Hunt",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
+st.set_page_config(page_title="Dashboard — Dream Hunt", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
 top_nav("pages/3_📊_Dashboard.py")
-page_header("Dashboard", "Final clean data analysis of your entire job dataset", eyebrow="📊 Data Insights")
+page_header("Dashboard", "Analytics across all scraped sources", eyebrow="📊 Data Insights")
 
-# ══════════════════════════════════════════════════════════════════
-#  AI MODEL & DATA LOADING
-# ══════════════════════════════════════════════════════════════════
+init_db()
+
 @st.cache_resource
 def get_ai_model():
     return JobAIModel()
 
 ai_model = get_ai_model()
-if not hasattr(ai_model, "profile_skills"):
-    st.cache_resource.clear()
-    ai_model = get_ai_model()
 
-
-@st.cache_data(ttl=60)
-def get_latest_data(folder: str = "data"):
-    if not os.path.exists(folder):
-        return None, None
-    files = glob(os.path.join(folder, "*.csv"))
-    files = [f for f in files if "applied_jobs" not in f and "rejected_jobs" not in f and "top_matches" not in f]
-    if not files:
-        return None, None
-    latest = max(files, key=os.path.getmtime)
-    return latest, pd.read_csv(latest)
-
-
-latest_csv, df = get_latest_data()
-
-if latest_csv is None or df is None:
+# Load data
+raw_jobs = get_jobs(limit=5000)
+if not raw_jobs:
     st.warning("No job data found. Go to the **🕸️ Scraper** page to fetch jobs first.")
     if st.button("Go to Scraper"):
         st.switch_page("pages/1_🕸️_Scraper.py")
     st.stop()
 
-st.success(f"Loaded: `{os.path.basename(latest_csv)}`")
+df = pd.DataFrame(raw_jobs)
+df = df.drop_duplicates(subset=['url'], keep='first').reset_index(drop=True)
 
-before = len(df)
-df = df.drop_duplicates(subset=['Title', 'Company'], keep='first').reset_index(drop=True)
-if before > len(df):
-    st.caption(f"Removed {before - len(df)} duplicates.")
-
-if 'AI_Score' not in df.columns:
+# Score if missing
+unscored = df['ai_score'].isna() | (df['ai_score'] == 0)
+if unscored.any():
     with st.spinner("AI is scoring jobs..."):
-        df['AI_Score'] = ai_model.predict_scores(df)
-df = df.sort_values('AI_Score', ascending=False).reset_index(drop=True)
+        from src.database import update_job_scores
+        scored = ai_model.predict_with_breakdown(df[unscored].copy())
+        for _, row in scored.iterrows():
+            update_job_scores(row['url'], row.to_dict())
+    raw_jobs = get_jobs(limit=5000)
+    df = pd.DataFrame(raw_jobs)
 
-# ══════════════════════════════════════════════════════════════════
-#  STATS STRIP
-# ══════════════════════════════════════════════════════════════════
-total = len(df)
-top = len(df[df['AI_Score'] >= 85])
-good = len(df[df['AI_Score'] >= 50])
-avg_score = int(df['AI_Score'].mean()) if 'AI_Score' in df.columns else 0
+df = df.sort_values('ai_score', ascending=False).reset_index(drop=True)
+
+# Stats
+stats = get_stats()
+total = stats['total_jobs']
+top = stats['top_matches']
+good = stats['good_matches']
+avg_score = int(df['ai_score'].mean()) if 'ai_score' in df.columns and total > 0 else 0
 
 st.markdown(f'''
 <div class="stat-strip fade-in">
@@ -95,50 +75,34 @@ st.markdown(f'''
 </div>
 ''', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════
-#  SCORE DISTRIBUTION
-# ══════════════════════════════════════════════════════════════════
-st.markdown('<div class="glass-section fade-in-d1"><div class="glass-section-title">Score Distribution</div>', unsafe_allow_html=True)
+# Source breakdown
+if stats['sources']:
+    st.markdown('<div class="glass-section fade-in-d1"><div class="glass-section-title">Jobs by Source</div>', unsafe_allow_html=True)
+    source_df = pd.DataFrame([{"Source": k.title(), "Count": v} for k, v in stats['sources'].items()])
+    fig_src = px.bar(source_df, x='Source', y='Count', color='Source', color_discrete_sequence=px.colors.sequential.Purpor)
+    fig_src.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='rgba(180,175,220,0.90)', showlegend=False, height=250)
+    st.plotly_chart(fig_src, width="stretch", key="source_dist")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-gradient-divider"></div>', unsafe_allow_html=True)
 
-score_bins = pd.cut(df['AI_Score'], bins=[0, 49, 69, 84, 100], labels=['Low (<50)', 'Mid (50-69)', 'Good (70-84)', 'Top (85+)'])
+# Score Distribution
+st.markdown('<div class="glass-section fade-in-d1"><div class="glass-section-title">Score Distribution</div>', unsafe_allow_html=True)
+score_bins = pd.cut(df['ai_score'], bins=[0, 49, 69, 84, 100], labels=['Low (<50)', 'Mid (50-69)', 'Good (70-84)', 'Top (85+)'])
 score_dist = score_bins.value_counts().sort_index().reset_index()
 score_dist.columns = ['Score Range', 'Count']
-
-# Use a horizontal bar chart for distribution
-fig_score = px.bar(
-    score_dist, y='Score Range', x='Count', orientation='h',
-    color='Score Range',
-    color_discrete_map={
-        'Low (<50)': '#ef4444',
-        'Mid (50-69)': '#f59e0b',
-        'Good (70-84)': '#8b5cf6',
-        'Top (85+)': '#10b981',
-    },
-)
-fig_score.update_layout(
-    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-    font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0),
-    xaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""),
-    yaxis=dict(gridcolor='rgba(255,255,255,0.06)', title="", categoryorder='array', categoryarray=['Top (85+)', 'Good (70-84)', 'Mid (50-69)', 'Low (<50)']),
-    showlegend=False, height=200
-)
+fig_score = px.bar(score_dist, y='Score Range', x='Count', orientation='h', color='Score Range',
+    color_discrete_map={'Low (<50)': '#ef4444', 'Mid (50-69)': '#f59e0b', 'Good (70-84)': '#8b5cf6', 'Top (85+)': '#10b981'})
+fig_score.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""), yaxis=dict(gridcolor='rgba(255,255,255,0.06)', title="", categoryorder='array', categoryarray=['Top (85+)', 'Good (70-84)', 'Mid (50-69)', 'Low (<50)']), showlegend=False, height=200)
 st.plotly_chart(fig_score, width="stretch", key="score_dist")
-
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-gradient-divider"></div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════
-#  PROFILE VS MARKET
-# ══════════════════════════════════════════════════════════════════
+# Profile vs Market
 st.markdown('<div class="glass-section fade-in-d2"><div class="glass-section-title">Your Profile vs The Market</div>', unsafe_allow_html=True)
-
 c1, c2 = st.columns(2, gap="large")
-
 with c1:
     st.markdown("<div style='font-size:0.9rem;font-weight:600;margin-bottom:8px;color:var(--t1);'>Skill Coverage</div>", unsafe_allow_html=True)
     coverage = ai_model.get_skill_coverage(df)
-    
-    # Simple ring visualization using markdown
     cov_pct = coverage["coverage"]
     st.markdown(f"""
     <div style="display:flex; align-items:center; gap:20px; margin-bottom:20px;">
@@ -152,7 +116,6 @@ with c1:
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
     if coverage["missing"]:
         st.markdown("<div style='font-size:0.8rem;color:var(--t3);margin-bottom:8px;'>Top Missing Skills (Learn these!):</div>", unsafe_allow_html=True)
         max_missing = coverage["missing"][0][1]
@@ -170,24 +133,20 @@ with c1:
 
 with c2:
     st.markdown("<div style='font-size:0.9rem;font-weight:600;margin-bottom:8px;color:var(--t1);'>Top Matched Skills</div>", unsafe_allow_html=True)
-    if 'Skills' in df.columns:
+    if 'skills' in df.columns:
         market_skills = {}
-        for skills_str in df['Skills'].dropna():
+        for skills_str in df['skills'].dropna():
             for s in str(skills_str).split(','):
                 s = s.strip().lower()
                 if len(s) >= 2:
                     market_skills[s] = market_skills.get(s, 0) + 1
-        
         my_skills = ai_model.profile_skills
         matched_counts = []
         for s in my_skills:
-            # Check exact or substring match in market
             count = sum(v for k, v in market_skills.items() if s in k or k in s)
             if count > 0:
                 matched_counts.append((s.title(), count))
-                
         matched_counts.sort(key=lambda x: x[1], reverse=True)
-        
         if matched_counts:
             max_matched = matched_counts[0][1]
             for skill, count in matched_counts[:7]:
@@ -207,55 +166,29 @@ with c2:
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-gradient-divider"></div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════
-#  HIRING TRENDS
-# ══════════════════════════════════════════════════════════════════
+# Hiring Trends
 st.markdown('<div class="glass-section fade-in-d3"><div class="glass-section-title">Hiring Trends</div>', unsafe_allow_html=True)
-
 t1, t2 = st.columns(2, gap="large")
-
 with t1:
     st.markdown("<div style='font-size:0.9rem;font-weight:600;color:var(--t1);'>Top Companies</div>", unsafe_allow_html=True)
-    top_cos = df['Company'].value_counts().nlargest(10).reset_index()
+    top_cos = df['company'].value_counts().nlargest(10).reset_index()
     top_cos.columns = ['Company', 'Count']
-    fig_cos = px.bar(
-        top_cos.sort_values('Count', ascending=True), 
-        x='Count', y='Company', orientation='h',
-        color='Count', color_continuous_scale='Purpor'
-    )
-    fig_cos.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""),
-        showlegend=False, height=300, coloraxis_showscale=False
-    )
+    fig_cos = px.bar(top_cos.sort_values('Count', ascending=True), x='Count', y='Company', orientation='h', color='Count', color_continuous_scale='Purpor')
+    fig_cos.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""), yaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""), showlegend=False, height=300, coloraxis_showscale=False)
     st.plotly_chart(fig_cos, width="stretch", key="top_cos")
 
 with t2:
     st.markdown("<div style='font-size:0.9rem;font-weight:600;color:var(--t1);'>Top Locations</div>", unsafe_allow_html=True)
-    loc_counts = df['Location'].value_counts().nlargest(10).reset_index()
+    loc_counts = df['location'].value_counts().nlargest(10).reset_index()
     loc_counts.columns = ['Location', 'Count']
-    fig_loc = px.bar(
-        loc_counts.sort_values('Count', ascending=True), 
-        x='Count', y='Location', orientation='h',
-        color='Count', color_continuous_scale='Teal'
-    )
-    fig_loc.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""),
-        showlegend=False, height=300, coloraxis_showscale=False
-    )
+    fig_loc = px.bar(loc_counts.sort_values('Count', ascending=True), x='Count', y='Location', orientation='h', color='Count', color_continuous_scale='Teal')
+    fig_loc.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""), yaxis=dict(gridcolor='rgba(255,255,255,0.06)', title=""), showlegend=False, height=300, coloraxis_showscale=False)
     st.plotly_chart(fig_loc, width="stretch", key="top_loc")
 
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-gradient-divider"></div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════
-#  EXPERIENCE FIT
-# ══════════════════════════════════════════════════════════════════
+# Experience Fit
 st.markdown('<div class="glass-section fade-in-d4"><div class="glass-section-title">Experience Fit</div>', unsafe_allow_html=True)
 
 def extract_min_exp(exp_str):
@@ -270,26 +203,15 @@ def extract_min_exp(exp_str):
         pass
     return 0
 
-df['Min_Exp'] = df['Experience'].apply(extract_min_exp)
+df['Min_Exp'] = df['experience'].apply(extract_min_exp)
 exp_counts = df[df['Min_Exp'] > 0]['Min_Exp'].value_counts().sort_index().reset_index()
 exp_counts.columns = ['Min Experience (Years)', 'Count']
 
 if not exp_counts.empty:
-    # Add an annotation line for user's experience
     user_exp = ai_model.min_experience
-    fig_exp = px.bar(
-        exp_counts, x='Min Experience (Years)', y='Count',
-        color='Count', color_continuous_scale='Blues'
-    )
+    fig_exp = px.bar(exp_counts, x='Min Experience (Years)', y='Count', color='Count', color_continuous_scale='Blues')
     fig_exp.add_vline(x=user_exp, line_dash="dash", line_color="#ef4444", annotation_text=f"You ({user_exp} Yrs)", annotation_position="top right")
-    
-    fig_exp.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(gridcolor='rgba(255,255,255,0.06)'),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.06)'),
-        coloraxis_showscale=False, height=300
-    )
+    fig_exp.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='rgba(180,175,220,0.90)', margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(gridcolor='rgba(255,255,255,0.06)'), yaxis=dict(gridcolor='rgba(255,255,255,0.06)'), coloraxis_showscale=False, height=300)
     st.plotly_chart(fig_exp, width="stretch", key="exp_dist")
 else:
     st.caption("No experience data available to chart.")
@@ -297,20 +219,14 @@ else:
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-gradient-divider"></div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════
-#  FEEDBACK SUMMARY & RAW DATA
-# ══════════════════════════════════════════════════════════════════
+# Feedback Summary & Raw Data
 c_feed, c_raw = st.columns([1, 2], gap="large")
 
 with c_feed:
     st.markdown('<div class="glass-section"><div class="glass-section-title">AI Feedback Summary</div>', unsafe_allow_html=True)
-    
-    applied = pd.read_csv("data/applied_jobs.csv") if os.path.exists("data/applied_jobs.csv") else pd.DataFrame()
-    rejected = pd.read_csv("data/rejected_jobs.csv") if os.path.exists("data/rejected_jobs.csv") else pd.DataFrame()
-    
-    num_app = len(applied)
-    num_rej = len(rejected)
-    
+    fb = get_feedback_counts()
+    num_app = fb.get('applied', 0)
+    num_rej = fb.get('rejected', 0)
     st.markdown(f'''
     <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span style="color:var(--t2);">Jobs Applied (👍)</span>
@@ -321,11 +237,9 @@ with c_feed:
         <span style="font-weight:bold; color:#ef4444;">{num_rej}</span>
     </div>
     ''', unsafe_allow_html=True)
-    
     info = ai_model.get_model_info()
     status_color = "#10b981" if info.get('loaded') else "#f59e0b"
     status_text = "Trained (ML Active)" if info.get('loaded') else "Not Trained (Baseline Active)"
-    
     st.markdown(f'''
     <div style="background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:10px; border:1px solid var(--glass-bd); margin-bottom:16px;">
         <div style="font-size:0.75rem; color:var(--t3); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Model Status</div>
@@ -337,28 +251,16 @@ with c_feed:
         <div style="font-size:0.8rem; color:var(--t2);">Samples: {info.get("samples", 0)}</div>
     </div>
     ''', unsafe_allow_html=True)
-    
     st.markdown('</div>', unsafe_allow_html=True)
 
 with c_raw:
     st.markdown('<div class="glass-section"><div class="glass-section-title">Raw Data</div>', unsafe_allow_html=True)
-    
-    # Try to predict with breakdown to show new columns
     with st.spinner("Calculating multi-signal scores..."):
         df_breakdown = ai_model.predict_with_breakdown(df)
-        
     st.dataframe(df_breakdown, height=250, width="stretch")
-    
-    st.download_button(
-        "Download Full Dataset",
-        df_breakdown.to_csv(index=False).encode("utf-8"),
-        "naukri_ai_scored_jobs.csv",
-        "text/csv",
-        width="stretch",
-    )
+    st.download_button("Download Full Dataset", df_breakdown.to_csv(index=False).encode("utf-8"), "dream_hunt_ai_scored_jobs.csv", "text/csv", width="stretch")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Fix plotly text colors globally
 st.markdown("""
 <style>
 .js-plotly-plot .plotly .gtitle,
@@ -367,4 +269,3 @@ st.markdown("""
 .js-plotly-plot .plotly .legend text { fill:var(--t2) !important; }
 </style>
 """, unsafe_allow_html=True)
-

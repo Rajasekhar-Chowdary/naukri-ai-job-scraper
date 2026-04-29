@@ -200,16 +200,18 @@ class JobAIModel:
 
     # ── Text / Experience Helpers ─────────────────────────────────
 
+    @staticmethod
+    def _get_field(row, key: str):
+        """Safely get a field from a row (Series or dict), trying both cases."""
+        if isinstance(row, pd.Series):
+            return str(row.get(key, row.get(key.lower(), '')))
+        return str(row.get(key, row.get(key.lower(), '')))
+
     def _prepare_text(self, row) -> str:
         """Safely combine job fields into a single text string."""
-        if isinstance(row, pd.Series):
-            title = str(row.get('Title', ''))
-            desc = str(row.get('Description', ''))
-            skills = str(row.get('Skills', ''))
-        else:
-            title = str(row['Title']) if 'Title' in row else ''
-            desc = str(row['Description']) if 'Description' in row else ''
-            skills = str(row['Skills']) if 'Skills' in row else ''
+        title = self._get_field(row, 'Title')
+        desc = self._get_field(row, 'Description')
+        skills = self._get_field(row, 'Skills')
         return f"{title} {desc} {skills}".lower()
 
     @staticmethod
@@ -228,8 +230,8 @@ class JobAIModel:
 
     def _skill_match_score(self, row) -> float:
         """Score 0-100: what % of the job's required skills match the user's profile."""
-        job_skills_raw = str(row.get('Skills', ''))
-        job_desc = str(row.get('Description', '')).lower()
+        job_skills_raw = self._get_field(row, 'Skills')
+        job_desc = self._get_field(row, 'Description').lower()
 
         if not job_skills_raw or job_skills_raw in ('N/A', 'nan'):
             # Fall back to description keyword matching
@@ -254,7 +256,7 @@ class JobAIModel:
 
     def _title_relevance_score(self, row) -> float:
         """Score 0-100: how relevant is the job title to target roles."""
-        title = str(row.get('Title', '')).lower()
+        title = self._get_field(row, 'Title').lower()
         if not title:
             return 50.0
 
@@ -265,7 +267,7 @@ class JobAIModel:
 
     def _description_semantic_score(self, row) -> float:
         """Score 0-100: semantic similarity of job description to focused profile."""
-        desc = str(row.get('Description', ''))
+        desc = self._get_field(row, 'Description')
         if not desc or desc in ('N/A', 'nan'):
             return 50.0
 
@@ -276,7 +278,7 @@ class JobAIModel:
 
     def _experience_fit_score(self, row) -> float:
         """Score 0-100: smooth gradient experience fit (not binary penalty)."""
-        job_min, job_max = self.parse_experience(row.get('Experience', ''))
+        job_min, job_max = self.parse_experience(self._get_field(row, 'Experience'))
         user_exp = self.min_experience
 
         # If job has no experience requirement, neutral
