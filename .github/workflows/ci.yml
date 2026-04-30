@@ -2,11 +2,60 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lint tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort
+      - name: Check formatting (Black)
+        run: black --check src/ tests/ run_dashboard.py run_scheduler.py
+      - name: Check import sorting (isort)
+        run: isort --check-only src/ tests/ run_dashboard.py run_scheduler.py
+      - name: Lint with flake8
+        run: flake8 src/ tests/ run_dashboard.py run_scheduler.py --count --show-source --statistics
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mypy types-requests
+      - name: Type check with mypy
+        run: mypy src/ --ignore-missing-imports --show-error-codes
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+      - name: Bandit security scan
+        run: bandit -r src/ -f json -o bandit-report.json || true
+      - name: Check known vulnerabilities
+        run: safety check -r requirements.txt || true
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -18,10 +67,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run tests
-        run: |
-          python -m pytest tests/ -v
-      - name: Lint check
-        run: |
-          pip install flake8
-          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          pip install pytest-cov
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  docker-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t dream-hunt:test .
+      - name: Verify image builds
+        run: docker run --rm dream-hunt:test python -c "import src; print('OK')"

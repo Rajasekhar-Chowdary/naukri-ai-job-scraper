@@ -361,6 +361,70 @@ Bug reports and feature requests are welcome via GitHub Issues.
 
 ---
 
+## Production Deployment
+
+### Docker Compose (Recommended)
+
+Run the full stack (dashboard + 24/7 scheduler) with one command:
+
+```bash
+cp .env.example .env
+# Edit .env with your notification preferences
+docker-compose up -d
+```
+
+Services:
+| Service | Port | Purpose |
+|---|---|---|
+| `dashboard` | `8501` | Streamlit UI |
+| `scheduler` | — | Background scraper (APScheduler) |
+
+### Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `JOB_DB_PATH` | `data/jobs.db` | SQLite database location |
+| `NOTIFY_EMAIL` | `false` | Enable email alerts |
+| `SMTP_HOST` | `smtp.gmail.com` | SMTP server |
+| `SMTP_USER` | — | Sender email |
+| `SMTP_PASS` | — | App password (not account password) |
+| `DISCORD_WEBHOOK_URL` | — | Discord webhook for alerts |
+| `SLACK_WEBHOOK_URL` | — | Slack webhook for alerts |
+
+## Git Workflow
+
+This project follows **Git Flow**:
+
+```
+main    ──► production releases (tagged, protected)
+  ▲
+  │
+develop ──► integration branch, all features merge here first
+  ▲
+  │
+feature/* ──► individual features/fixes
+```
+
+1. Create a feature branch from `develop`
+2. Open a PR to `develop` (triggers CI: lint + type-check + tests)
+3. After review & green CI, merge to `develop`
+4. When ready for release, open a PR from `develop` → `main`
+5. Tag releases as `v1.0.0` following [SemVer](https://semver.org)
+
+## CI / CD
+
+Every PR triggers:
+- **Lint** — `black`, `isort`, `flake8`
+- **Type Check** — `mypy`
+- **Security** — `bandit`, `safety`
+- **Tests** — `pytest` with coverage report
+- **Docker** — image build verification
+
+Releases automatically:
+- Build Docker image
+- Push to GitHub Container Registry (`ghcr.io`)
+- Create GitHub Release with changelog
+
 ## License
 
 Released under the [MIT License](LICENSE). You are free to use, modify, and distribute it for personal and commercial purposes with attribution.
