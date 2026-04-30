@@ -8,3 +8,6 @@ joblib
 pypdf
 pytest
 sentence-transformers
+apscheduler
+requests
+regex>=2025.10.22

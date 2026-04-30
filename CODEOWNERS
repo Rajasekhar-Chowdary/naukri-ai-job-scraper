@@ -1,0 +1,11 @@
+# Global owners
+* @Rajasekhar-Chowdary
+
+# Scraper logic
+src/scraper/ @Rajasekhar-Chowdary
+
+# AI model
+src/ai/ @Rajasekhar-Chowdary
+
+# Database
+src/database.py @Rajasekhar-Chowdary

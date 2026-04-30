@@ -95,15 +95,16 @@ TIME_PERIODS = {
 }
 
 
-def build_naukri_url(role, location, page_num=1, days=0, experience_min=None,
-                     salary_bucket=None, industry_id=None, work_mode=None):
+def build_naukri_url(
+    role, location, page_num=1, days=0, experience_min=None, salary_bucket=None, industry_id=None, work_mode=None
+):
     """Build a Naukri search URL with query parameters."""
-    formatted_role = role.replace(' ', '-').lower()
+    formatted_role = role.replace(" ", "-").lower()
     loc = location.lower().strip() if location else ""
 
     loc_path = f"-in-{loc}" if loc else ""
     page_path = f"-{page_num}" if page_num > 1 else ""
-    
+
     url = f"https://www.naukri.com/{formatted_role}-jobs{loc_path}{page_path}"
 
     params = {}
@@ -253,24 +254,37 @@ class NaukriScraper:
                 tag_els = card.find_elements(By.CSS_SELECTOR, ", ".join(self._TAGS_SELECTORS))
                 tags = ", ".join(t.text.strip() for t in tag_els if t.text.strip()) or "N/A"
 
-                jobs.append({
-                    "Title": title,
-                    "Company": company,
-                    "Location": loc,
-                    "Experience": experience,
-                    "Description": desc,
-                    "Skills": tags,
-                    "Posted": posted,
-                    "Job URL": link,
-                })
+                jobs.append(
+                    {
+                        "Title": title,
+                        "Company": company,
+                        "Location": loc,
+                        "Experience": experience,
+                        "Description": desc,
+                        "Skills": tags,
+                        "Posted": posted,
+                        "Job URL": link,
+                    }
+                )
             except Exception as e:
                 logger.debug(f"Skipping a card due to parse error: {e}")
 
         return jobs
 
-    def scrape(self, role, location, pages=None, output_file=None, days=0,
-               experience_min=None, salary_bucket=None, industry_id=None,
-               work_mode=None, max_jobs=None, progress_callback=None):
+    def scrape(
+        self,
+        role,
+        location,
+        pages=None,
+        output_file=None,
+        days=0,
+        experience_min=None,
+        salary_bucket=None,
+        industry_id=None,
+        work_mode=None,
+        max_jobs=None,
+        progress_callback=None,
+    ):
         all_jobs = []
 
         if pages is None and max_jobs:
@@ -284,9 +298,14 @@ class NaukriScraper:
             for page in range(pages):
                 page_num = page + 1
                 url = build_naukri_url(
-                    role, location, page_num=page_num, days=days,
-                    experience_min=experience_min, salary_bucket=salary_bucket,
-                    industry_id=industry_id, work_mode=work_mode
+                    role,
+                    location,
+                    page_num=page_num,
+                    days=days,
+                    experience_min=experience_min,
+                    salary_bucket=salary_bucket,
+                    industry_id=industry_id,
+                    work_mode=work_mode,
                 )
 
                 stage_pct = int(5 + ((page + 1) / pages) * 50)
@@ -320,9 +339,11 @@ class NaukriScraper:
 
                 if last_error and not page_jobs:
                     self._update_stage(
-                        "Fetching", stage_pct,
+                        "Fetching",
+                        stage_pct,
                         f"Page {page + 1} failed (Timeout/CAPTCHA). Continuing with collected jobs.",
-                        len(all_jobs), error=True
+                        len(all_jobs),
+                        error=True,
                     )
                     # Don't break — try remaining pages
                     continue
@@ -345,7 +366,7 @@ class NaukriScraper:
             df = pd.DataFrame(all_jobs)
             initial_len = len(df)
             df = df.drop_duplicates(subset=["Title", "Company"], keep="first").reset_index(drop=True)
-            
+
             # Cross-scrape deduplication: Remove jobs already found in previous runs
             data_dir = "data"
             historical_urls = set()
@@ -357,12 +378,12 @@ class NaukriScraper:
                             historical_urls.update(hist_df["Job URL"].dropna().tolist())
                         except Exception:
                             pass
-            
+
             df = df[~df["Job URL"].isin(historical_urls)].reset_index(drop=True)
-            
+
             if initial_len > len(df):
                 logger.info(f"Filtered {initial_len - len(df)} duplicate or previously scraped jobs.")
-                
+
             if df.empty:
                 logger.warning("All scraped jobs were already found in previous runs.")
                 self._update_stage("Parsing", 0, "All jobs already scraped previously. No new jobs.", 0, done=True)
@@ -381,9 +402,7 @@ class NaukriScraper:
 
             if not output_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                output_file = (
-                    f"data/naukri_{role.replace(' ', '_')}_{location or 'india'}_jobs_{timestamp}.csv"
-                )
+                output_file = f"data/naukri_{role.replace(' ', '_')}_{location or 'india'}_jobs_{timestamp}.csv"
 
             if not output_file.endswith(".csv"):
                 output_file += ".csv"
@@ -414,9 +433,7 @@ class NaukriScraper:
                     if not high_score_jobs.empty:
                         header = not os.path.exists(apply_file)
                         high_score_jobs.to_csv(apply_file, mode="a", header=header, index=False)
-                        logger.info(
-                            f"Auto-saved {len(high_score_jobs)} new top jobs (Score 85+) to '{apply_file}'"
-                        )
+                        logger.info(f"Auto-saved {len(high_score_jobs)} new top jobs (Score 85+) to '{apply_file}'")
 
             top = len(df[df["AI_Score"] >= 85]) if "AI_Score" in df.columns else 0
             good = len(df[df["AI_Score"] >= 50]) if "AI_Score" in df.columns else 0
@@ -436,7 +453,14 @@ class NaukriScraper:
 
 
 def run_cli():
-    parser = argparse.ArgumentParser(description="Naukri.com Job Scraper CLI")
+    parser = argparse.ArgumentParser(description="Multi-Source Job Scraper CLI")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="naukri",
+        choices=["naukri", "linkedin", "indeed", "all"],
+        help="Job source to scrape",
+    )
     parser.add_argument("--role", type=str, required=False, help="Job role to search for")
     parser.add_argument("--location", type=str, required=False, help="Location")
     parser.add_argument("--pages", type=int, default=1, help="Number of pages to scrape")
@@ -446,24 +470,58 @@ def run_cli():
     parser.add_argument("--industry", type=str, default=None, help="Industry name")
     parser.add_argument("--work-mode", type=str, nargs="+", default=None, help="Work modes")
     parser.add_argument("--max-jobs", type=int, default=None, help="Maximum number of jobs")
-    parser.add_argument("--output", type=str, help="Output CSV filename")
+    parser.add_argument("--output", type=str, help="Output CSV filename (legacy naukri only)")
     parser.add_argument("--visible", action="store_true", help="Run browser in visible mode")
 
     args = parser.parse_args()
 
     role = args.role
     if not role:
-        print("\n🤖 Welcome to Naukri AI Job Scraper!")
+        print("\n🤖 Welcome to AI Job Scraper!")
         role = input("👉 What job role are you looking for? (e.g. 'software engineer'): ").strip()
 
     location = args.location
     if not location:
         location = input("👉 Where are you looking? (e.g. 'india', 'bangalore', 'remote'): ").strip()
 
-    logger.info(f"Starting Scraper for role: '{role}' in '{location}' for {args.pages} pages...")
-    scraper = NaukriScraper(headless=not args.visible)
-    scraper.scrape(
-        role=role, location=location, pages=args.pages, output_file=args.output,
-        days=args.days, experience_min=args.experience, salary_bucket=args.salary,
-        industry_id=args.industry, work_mode=args.work_mode, max_jobs=args.max_jobs
-    )
+    if args.source == "naukri":
+        logger.info(f"Starting Naukri Scraper for role: '{role}' in '{location}' for {args.pages} pages...")
+        scraper = NaukriScraper(headless=not args.visible)
+        scraper.scrape(
+            role=role,
+            location=location,
+            pages=args.pages,
+            output_file=args.output,
+            days=args.days,
+            experience_min=args.experience,
+            salary_bucket=args.salary,
+            industry_id=args.industry,
+            work_mode=args.work_mode,
+            max_jobs=args.max_jobs,
+        )
+    else:
+        from src.scraper.multi_runner import MultiScraperRunner
+        from src.database import init_db
+
+        init_db()
+        sources = ["naukri", "linkedin", "indeed"] if args.source == "all" else [args.source]
+        runner = MultiScraperRunner(headless=not args.visible)
+        logger.info(f"Starting {args.source} scraper(s) for role: '{role}' in '{location}'...")
+        results = runner.run_all(
+            role=role,
+            location=location,
+            sources=sources,
+            pages=args.pages,
+            days=args.days,
+            experience_min=args.experience,
+            max_jobs=args.max_jobs,
+            salary_bucket=args.salary,
+            industry_id=args.industry,
+            work_mode=args.work_mode,
+        )
+        print("\n✅ Scraping complete!")
+        for src, result in results.items():
+            status = "✅" if not result.get("error") else "❌"
+            print(f"  {status} {src.title()}: {result.get('jobs_found', 0)} found, {result.get('new_jobs', 0)} new")
+            if result.get("error"):
+                print(f"     Error: {result['error']}")

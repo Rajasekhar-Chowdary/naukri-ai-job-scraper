@@ -16,18 +16,42 @@ from datetime import datetime
 def _color(text, code):
     return f"\033[{code}m{text}\033[0m"
 
-def cyan(t): return _color(t, "96")
-def green(t): return _color(t, "92")
-def yellow(t): return _color(t, "93")
-def dim(t): return _color(t, "90")
-def bold(t): return _color(t, "1")
-def violet(t): return _color(t, "95")
+
+def cyan(t):
+    return _color(t, "96")
+
+
+def green(t):
+    return _color(t, "92")
+
+
+def yellow(t):
+    return _color(t, "93")
+
+
+def dim(t):
+    return _color(t, "90")
+
+
+def bold(t):
+    return _color(t, "1")
+
+
+def violet(t):
+    return _color(t, "95")
+
 
 def print_splash():
     print()
     print(cyan("  ╔═══════════════════════════════════════════════════════════════╗"))
     print(cyan("  ║") + "                                                               " + cyan("║"))
-    print(cyan("  ║") + "   " + bold(violet("✦  Naukri AI Opportunity Finder")) + "                                " + cyan("║"))
+    print(
+        cyan("  ║")
+        + "   "
+        + bold(violet("✦  Naukri AI Opportunity Finder"))
+        + "                                "
+        + cyan("║")
+    )
     print(cyan("  ║") + "      " + dim("AI-powered job scraping, scoring & analytics") + "              " + cyan("║"))
     print(cyan("  ║") + "                                                               " + cyan("║"))
     print(cyan("  ╚═══════════════════════════════════════════════════════════════╝"))
@@ -64,6 +88,7 @@ def print_status():
     if os.path.exists(config_path):
         try:
             import json
+
             with open(config_path) as f:
                 cfg = json.load(f)
                 skills_count = len(cfg.get("profile_keywords", []))
