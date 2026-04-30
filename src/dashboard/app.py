@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="Dream Hunt — Naukri AI Opportunity Finder",
     page_icon="✦",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 inject_css()
@@ -22,7 +22,8 @@ top_nav("app.py")
 # ══════════════════════════════════════════════════════════════════
 
 # Hero
-st.markdown("""
+st.markdown(
+    """
 <div style="text-align:center; padding:40px 0 30px 0;">
   <div class="eyebrow" style="margin-bottom:18px;">✦ AI-Powered Career Discovery</div>
   <div class="welcome-title-big" style="font-size:clamp(2.2rem,6vw,3.6rem); margin-bottom:16px;">
@@ -33,7 +34,9 @@ st.markdown("""
     Upload your profile, scrape fresh listings, and let AI rank the best matches for you.
   </p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # System status bar
 status_html = ""
@@ -56,7 +59,8 @@ if os.path.exists(queue_file):
     except Exception:
         pass
 
-st.markdown(f"""
+st.markdown(
+    f"""
 <div style="max-width:720px; margin:0 auto 40px;">
   <div class="dash-card-outer">
     <div class="dash-card-inner" style="display:flex; align-items:center; justify-content:center; gap:32px; flex-wrap:wrap; text-align:center;">
@@ -77,32 +81,43 @@ st.markdown(f"""
     </div>
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # How it works — 4 step cards
-st.markdown("""
+st.markdown(
+    """
 <div style="text-align:center; margin-bottom:12px;">
   <div style="font-size:1.15rem; font-weight:700; color:var(--t1); margin-bottom:6px;">How it works</div>
   <div style="font-size:0.85rem; color:var(--t3);">Four simple steps from search to insight</div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-st.markdown(f"""
+st.markdown(
+    f"""
 <div class="welcome-grid" style="max-width:900px; margin:0 auto;">
   {welcome_card("Step 1", "🕸️ Scrape", "Configure your search — designation, location, experience, salary, industry, and time period. One click launches the browser scraper and collects fresh listings from Naukri.com.")}
   {welcome_card("Step 2", "🧠 AI Scoring", "The AI reads your profile (skills, experience, resume PDF) and scores every job 0–100. Teach the AI by marking Good Fit / Bad Fit. Retrain the model anytime.")}
   {welcome_card("Step 3", "📋 Browse Jobs", "Explore AI-ranked job cards with colour-coded scores. Filter by score, search by skill or company, and view full descriptions with direct Naukri links.")}
   {welcome_card("Step 4", "📊 Dashboard", "Deep-dive analytics — top hiring companies, score distribution, location heatmaps, and raw data export. Everything you need to understand the market.")}
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # CTA removed — use the top navigation bar to switch pages
 
 # Footer
-st.markdown("""
+st.markdown(
+    """
 <div style="text-align:center; margin-top:48px; padding-top:24px; border-top:1px solid var(--div);">
   <p style="font-size:0.78rem; color:var(--t3);">
     Dream Hunt · Naukri AI Opportunity Finder · Built with Streamlit & Selenium
   </p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)

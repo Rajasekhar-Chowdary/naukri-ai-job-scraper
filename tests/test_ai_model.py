@@ -1,6 +1,7 @@
 """
 Tests for the production JobAIModel.
 """
+
 import pytest
 import pandas as pd
 import os
@@ -53,15 +54,17 @@ class TestJobAIModel:
         model.profile_skills = ["python", "sql", "data", "analyst"]
         model.min_experience = 3
 
-        df = pd.DataFrame({
-            "Title": ["Python Developer", "HR Manager", "Data Analyst"],
-            "Company": ["A", "B", "C"],
-            "Location": ["X", "Y", "Z"],
-            "Experience": ["2-4 Yrs", "5-10 Yrs", "3-5 Yrs"],
-            "Description": ["Python coding", "People management", "SQL and analytics"],
-            "Skills": ["Python, SQL", "Communication", "SQL, Python, Tableau"],
-            "Job URL": ["#1", "#2", "#3"],
-        })
+        df = pd.DataFrame(
+            {
+                "Title": ["Python Developer", "HR Manager", "Data Analyst"],
+                "Company": ["A", "B", "C"],
+                "Location": ["X", "Y", "Z"],
+                "Experience": ["2-4 Yrs", "5-10 Yrs", "3-5 Yrs"],
+                "Description": ["Python coding", "People management", "SQL and analytics"],
+                "Skills": ["Python, SQL", "Communication", "SQL, Python, Tableau"],
+                "Job URL": ["#1", "#2", "#3"],
+            }
+        )
 
         scores = model.calculate_baseline_score(df)
         assert len(scores) == 3
@@ -77,9 +80,11 @@ class TestJobAIModel:
         model = JobAIModel(config_path="nonexistent.json")
         model.profile_skills = ["python", "sql", "tableau"]
 
-        df = pd.DataFrame({
-            "Skills": ["Python, SQL, AWS", "Python, Tableau", "Java, Kubernetes"],
-        })
+        df = pd.DataFrame(
+            {
+                "Skills": ["Python, SQL, AWS", "Python, Tableau", "Java, Kubernetes"],
+            }
+        )
         coverage = model.get_skill_coverage(df)
         assert 0 <= coverage["coverage"] <= 100
         assert coverage["total_unique"] > 0
@@ -89,9 +94,11 @@ class TestJobAIModel:
         model = JobAIModel(config_path="nonexistent.json")
         model.profile_skills = ["python", "sql"]
 
-        df = pd.DataFrame({
-            "Skills": ["Python, AWS, Docker", "SQL, AWS, Kubernetes", "Python, Machine Learning"],
-        })
+        df = pd.DataFrame(
+            {
+                "Skills": ["Python, AWS, Docker", "SQL, AWS, Kubernetes", "Python, Machine Learning"],
+            }
+        )
         recs = model.get_upskill_recommendations(df, top_n=3)
         assert isinstance(recs, list)
         # Should not recommend python or sql

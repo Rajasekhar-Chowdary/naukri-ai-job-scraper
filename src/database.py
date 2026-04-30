@@ -1,7 +1,7 @@
 """
-Unified SQLite database layer for job storage across all scrapers.
-Replaces fragile CSV files with ACID transactions and cross-source deduplication.
+Unified SQLite database layer for job and gig storage across all scrapers.
 """
+
 import sqlite3
 import os
 import json
@@ -10,7 +10,14 @@ from typing import List, Dict, Optional, Tuple
 from contextlib import contextmanager
 from src.utils.logger import setup_logger
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None  # type: ignore
+
 logger = setup_logger("Database")
+
+
 def _db_path() -> str:
     return os.environ.get("JOB_DB_PATH", "data/jobs.db")
 
@@ -27,7 +34,8 @@ def _get_conn() -> sqlite3.Connection:
 def init_db():
     """Create tables if they don't exist."""
     with _get_conn() as conn:
-        conn.executescript("""
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS jobs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT NOT NULL,
@@ -75,18 +83,57 @@ def init_db():
                 started_at TEXT DEFAULT (datetime('now')),
                 completed_at TEXT
             );
-        """)
+
+            CREATE TABLE IF NOT EXISTS gigs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                external_id TEXT,
+                title TEXT NOT NULL,
+                client TEXT,
+                location TEXT,
+                description TEXT,
+                skills TEXT,
+                url TEXT UNIQUE NOT NULL,
+                posted TEXT,
+                budget_type TEXT,
+                budget_min REAL,
+                budget_max REAL,
+                currency TEXT,
+                proposals_count INTEGER,
+                time_left TEXT,
+                verified INTEGER DEFAULT 0,
+                ai_score INTEGER,
+                score_skill REAL,
+                score_budget REAL,
+                score_desc REAL,
+                is_applied INTEGER DEFAULT 0,
+                is_rejected INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_gigs_source ON gigs(source);
+            CREATE INDEX IF NOT EXISTS idx_gigs_score ON gigs(ai_score);
+            CREATE INDEX IF NOT EXISTS idx_gigs_url ON gigs(url);
+            CREATE INDEX IF NOT EXISTS idx_gigs_created ON gigs(created_at);
+
+            CREATE TABLE IF NOT EXISTS gig_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gig_url TEXT NOT NULL,
+                label TEXT NOT NULL CHECK(label IN ('applied','rejected')),
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY(gig_url) REFERENCES gigs(url)
+            );
+        """
+        )
         conn.commit()
     logger.info("Database initialized.")
 
 
 # ── Job CRUD ──────────────────────────────────────────────────────
 
+
 def insert_jobs(jobs: List[Dict], source: str) -> Tuple[int, int]:
-    """
-    Bulk insert jobs with cross-source deduplication by URL.
-    Returns (inserted_count, duplicate_count).
-    """
+    """Bulk insert jobs with cross-source deduplication by URL."""
     if not jobs:
         return 0, 0
 
@@ -135,7 +182,6 @@ def get_jobs(
     limit: int = 500,
     offset: int = 0,
 ) -> List[Dict]:
-    """Fetch jobs with optional filters. Returns list of dicts."""
     query = "SELECT * FROM jobs WHERE 1=1"
     params = []
     if min_score > 0:
@@ -162,7 +208,6 @@ def get_job_by_url(url: str) -> Optional[Dict]:
 
 
 def update_job_scores(url: str, scores: Dict):
-    """Update AI scores for a job."""
     with _get_conn() as conn:
         conn.execute(
             """
@@ -188,7 +233,6 @@ def update_job_scores(url: str, scores: Dict):
 
 
 def save_feedback(url: str, label: str):
-    """Save applied/rejected feedback and update job flags."""
     with _get_conn() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO feedback (job_url, label) VALUES (?, ?)",
@@ -201,13 +245,175 @@ def save_feedback(url: str, label: str):
 
 def get_feedback_counts() -> Dict[str, int]:
     with _get_conn() as conn:
-        rows = conn.execute(
-            "SELECT label, COUNT(*) FROM feedback GROUP BY label"
-        ).fetchall()
+        rows = conn.execute("SELECT label, COUNT(*) FROM feedback GROUP BY label").fetchall()
         return {row[0]: row[1] for row in rows}
 
 
+def get_feedback_for_training() -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                j.title AS "Title",
+                j.company AS "Company",
+                j.location AS "Location",
+                j.experience AS "Experience",
+                j.description AS "Description",
+                j.skills AS "Skills",
+                j.posted AS "Posted",
+                j.url AS "Job URL",
+                f.label
+            FROM feedback f
+            JOIN jobs j ON j.url = f.job_url
+            ORDER BY f.created_at
+            """
+        ).fetchall()
+
+    if not rows:
+        return None, None
+
+    df = pd.DataFrame([dict(row) for row in rows])
+    applied_df = df[df["label"] == "applied"].drop(columns=["label"]).reset_index(drop=True)
+    rejected_df = df[df["label"] == "rejected"].drop(columns=["label"]).reset_index(drop=True)
+
+    return applied_df if not applied_df.empty else None, rejected_df if not rejected_df.empty else None
+
+
+# ── Gig CRUD ──────────────────────────────────────────────────────
+
+
+def insert_gigs(gigs: List[Dict], source: str) -> Tuple[int, int]:
+    """Bulk insert gigs with cross-source deduplication by URL."""
+    if not gigs:
+        return 0, 0
+
+    inserted = 0
+    duplicates = 0
+
+    with _get_conn() as conn:
+        for gig in gigs:
+            url = gig.get("Job URL") or gig.get("url") or ""
+            if not url:
+                continue
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO gigs (
+                        source, external_id, title, client, location, description,
+                        skills, url, posted, budget_type, budget_min, budget_max,
+                        currency, proposals_count, time_left, verified
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        source,
+                        gig.get("id"),
+                        gig.get("Title", ""),
+                        gig.get("Client", ""),
+                        gig.get("Location", ""),
+                        gig.get("Description", ""),
+                        gig.get("Skills", ""),
+                        url,
+                        gig.get("Posted", ""),
+                        gig.get("Budget Type", ""),
+                        gig.get("Budget Min"),
+                        gig.get("Budget Max"),
+                        gig.get("Currency", ""),
+                        gig.get("Proposals"),
+                        gig.get("Time Left", ""),
+                        1 if gig.get("Verified") else 0,
+                    ),
+                )
+                inserted += 1
+            except sqlite3.IntegrityError:
+                duplicates += 1
+        conn.commit()
+
+    logger.info(f"Inserted {inserted} new gigs from {source} ({duplicates} duplicates skipped).")
+    return inserted, duplicates
+
+
+def get_gigs(
+    min_score: int = 0,
+    source: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> List[Dict]:
+    query = "SELECT * FROM gigs WHERE 1=1"
+    params = []
+    if min_score > 0:
+        query += " AND ai_score >= ?"
+        params.append(min_score)
+    if source:
+        query += " AND source = ?"
+        params.append(source)
+    if search:
+        query += " AND (title LIKE ? OR client LIKE ? OR skills LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+    query += " ORDER BY ai_score DESC, created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    with _get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_gig_scores(url: str, scores: Dict):
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE gigs SET
+                ai_score = ?,
+                score_skill = ?,
+                score_budget = ?,
+                score_desc = ?,
+                updated_at = datetime('now')
+            WHERE url = ?
+            """,
+            (
+                scores.get("AI_Score"),
+                scores.get("Score_Skill"),
+                scores.get("Score_Budget"),
+                scores.get("Score_Desc"),
+                url,
+            ),
+        )
+        conn.commit()
+
+
+def save_gig_feedback(url: str, label: str):
+    with _get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO gig_feedback (gig_url, label) VALUES (?, ?)",
+            (url, label),
+        )
+        flag = "is_applied" if label == "applied" else "is_rejected"
+        conn.execute(f"UPDATE gigs SET {flag} = 1 WHERE url = ?", (url,))
+        conn.commit()
+
+
+def get_gig_feedback_counts() -> Dict[str, int]:
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT label, COUNT(*) FROM gig_feedback GROUP BY label").fetchall()
+        return {row[0]: row[1] for row in rows}
+
+
+def get_gig_stats() -> Dict:
+    with _get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM gigs").fetchone()[0]
+        top = conn.execute("SELECT COUNT(*) FROM gigs WHERE ai_score >= 85").fetchone()[0]
+        good = conn.execute("SELECT COUNT(*) FROM gigs WHERE ai_score >= 50").fetchone()[0]
+        sources = conn.execute("SELECT source, COUNT(*) FROM gigs GROUP BY source").fetchall()
+        return {
+            "total_gigs": total,
+            "top_matches": top,
+            "good_matches": good,
+            "sources": {s: c for s, c in sources},
+        }
+
+
 # ── Scrape log ────────────────────────────────────────────────────
+
 
 def start_scrape(source: str, role: str, location: str) -> int:
     with _get_conn() as conn:
@@ -238,22 +444,19 @@ def finish_scrape(scrape_id: int, jobs_found: int, new_jobs: int, error_msg: Opt
 
 def get_latest_scrapes(limit: int = 10) -> List[Dict]:
     with _get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM scrapes ORDER BY started_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM scrapes ORDER BY started_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(row) for row in rows]
 
 
 # ── Stats ─────────────────────────────────────────────────────────
+
 
 def get_stats() -> Dict:
     with _get_conn() as conn:
         total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
         top = conn.execute("SELECT COUNT(*) FROM jobs WHERE ai_score >= 85").fetchone()[0]
         good = conn.execute("SELECT COUNT(*) FROM jobs WHERE ai_score >= 50").fetchone()[0]
-        sources = conn.execute(
-            "SELECT source, COUNT(*) FROM jobs GROUP BY source"
-        ).fetchall()
+        sources = conn.execute("SELECT source, COUNT(*) FROM jobs GROUP BY source").fetchall()
         return {
             "total_jobs": total,
             "top_matches": top,

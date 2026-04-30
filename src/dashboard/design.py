@@ -32,11 +32,11 @@ def top_nav(current_page: str):
             if is_active:
                 st.markdown(
                     '<div style="text-align:center;padding:10px 16px;'
-                    'background:linear-gradient(135deg,#8b5cf6,#6366f1);'
-                    'border-radius:999px;color:#fff;font-weight:600;'
+                    "background:linear-gradient(135deg,#8b5cf6,#6366f1);"
+                    "border-radius:999px;color:#fff;font-weight:600;"
                     'font-size:0.85rem;cursor:default;">'
-                    f'{label}</div>',
-                    unsafe_allow_html=True
+                    f"{label}</div>",
+                    unsafe_allow_html=True,
                 )
             else:
                 if st.button(label, width="stretch", key=f"nav_{i}"):
@@ -63,7 +63,8 @@ def section_header(title: str, subtitle: str = ""):
 
 def welcome_card(step: str, title: str, desc: str) -> str:
     """Return HTML for a double-bezel welcome card."""
-    return _flat(f'''
+    return _flat(
+        f"""
 <div class="welcome-card-outer">
   <div class="welcome-card-inner">
     <div class="welcome-step">{step}</div>
@@ -71,7 +72,8 @@ def welcome_card(step: str, title: str, desc: str) -> str:
     <p class="welcome-card-desc">{desc}</p>
   </div>
 </div>
-''')
+"""
+    )
 
 
 def scraper_form_start(title: str = "Search Configuration", desc: str = ""):
@@ -85,33 +87,43 @@ def scraper_form_start(title: str = "Search Configuration", desc: str = ""):
 
 def scraper_form_end():
     """Close a double-bezel scraper form container."""
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 # ── Production AI Scoring Components ─────────────────────────────
 
+
 def score_badge(score: int, size: str = "md") -> str:
     """Return a color-coded score badge."""
     if score >= 80:
-        color = "#10b981"; bg = "rgba(16,185,129,0.12)"; bd = "rgba(16,185,129,0.35)"
+        color = "#10b981"
+        bg = "rgba(16,185,129,0.12)"
+        bd = "rgba(16,185,129,0.35)"
     elif score >= 50:
-        color = "#f59e0b"; bg = "rgba(245,158,11,0.12)"; bd = "rgba(245,158,11,0.35)"
+        color = "#f59e0b"
+        bg = "rgba(245,158,11,0.12)"
+        bd = "rgba(245,158,11,0.35)"
     else:
-        color = "#ef4444"; bg = "rgba(239,68,68,0.12)"; bd = "rgba(239,68,68,0.35)"
+        color = "#ef4444"
+        bg = "rgba(239,68,68,0.12)"
+        bd = "rgba(239,68,68,0.35)"
     sz = "32px" if size == "sm" else ("48px" if size == "lg" else "40px")
     fs = "0.85rem" if size == "sm" else ("1.15rem" if size == "lg" else "1rem")
-    return _flat(f'''
+    return _flat(
+        f"""
 <div style="display:inline-flex;align-items:center;justify-content:center;width:{sz};height:{sz};
 border-radius:50%;background:{bg};border:2px solid {bd};color:{color};font-weight:800;
 font-size:{fs};flex-shrink:0;">{score}</div>
-''')
+"""
+    )
 
 
 def score_breakdown_bar(semantic: int, penalty: int, final: int) -> str:
     """Return a stacked bar showing semantic score minus penalty."""
     semantic_w = max(0, min(100, semantic))
     penalty_w = max(0, min(100, penalty))
-    return _flat(f'''
+    return _flat(
+        f"""
 <div style="width:100%;margin:8px 0 12px 0;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
     <span style="font-size:0.7rem;color:var(--t3);">Match</span>
@@ -123,7 +135,8 @@ def score_breakdown_bar(semantic: int, penalty: int, final: int) -> str:
     <div style="width:{penalty_w}%;background:var(--r-bar);border-radius:0 50px 50px 0;"></div>
   </div>
 </div>
-''')
+"""
+    )
 
 
 def skill_coverage_ring(coverage: float, matched: int, total: int) -> str:
@@ -132,7 +145,8 @@ def skill_coverage_ring(coverage: float, matched: int, total: int) -> str:
     circumference = 2 * 3.14159 * 36
     offset = circumference * (1 - pct / 100)
     color = "#10b981" if pct >= 60 else ("#f59e0b" if pct >= 30 else "#ef4444")
-    return _flat(f'''
+    return _flat(
+        f"""
 <div style="display:flex;align-items:center;gap:16px;">
   <div style="position:relative;width:80px;height:80px;flex-shrink:0;">
     <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg);">
@@ -150,7 +164,8 @@ def skill_coverage_ring(coverage: float, matched: int, total: int) -> str:
     </div>
   </div>
 </div>
-''')
+"""
+    )
 
 
 def model_status_card(is_trained: bool, samples: int, accuracy: str, trained_at: str) -> str:
@@ -158,10 +173,23 @@ def model_status_card(is_trained: bool, samples: int, accuracy: str, trained_at:
     status_color = "#10b981" if is_trained else "#64748b"
     status_text = "Active" if is_trained else "Baseline Mode"
     status_icon = "●" if is_trained else "○"
-    acc_html = f'<div style="font-size:0.78rem;color:var(--t3);margin-top:4px;">Accuracy: <span style="color:var(--t1);font-weight:600;">{accuracy}</span></div>' if accuracy else ""
-    samples_html = f'<div style="font-size:0.78rem;color:var(--t3);margin-top:2px;">Trained on <span style="color:var(--t1);font-weight:600;">{samples}</span> feedback samples</div>' if samples else ""
-    date_html = f'<div style="font-size:0.7rem;color:var(--t4);margin-top:4px;">Last trained: {trained_at}</div>' if trained_at else ""
-    return _flat(f'''
+    acc_html = (
+        f'<div style="font-size:0.78rem;color:var(--t3);margin-top:4px;">Accuracy: <span style="color:var(--t1);font-weight:600;">{accuracy}</span></div>'
+        if accuracy
+        else ""
+    )
+    samples_html = (
+        f'<div style="font-size:0.78rem;color:var(--t3);margin-top:2px;">Trained on <span style="color:var(--t1);font-weight:600;">{samples}</span> feedback samples</div>'
+        if samples
+        else ""
+    )
+    date_html = (
+        f'<div style="font-size:0.7rem;color:var(--t4);margin-top:4px;">Last trained: {trained_at}</div>'
+        if trained_at
+        else ""
+    )
+    return _flat(
+        f"""
 <div class="dash-card-outer"><div class="dash-card-inner">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <span style="color:{status_color};font-size:1rem;">{status_icon}</span>
@@ -169,7 +197,8 @@ def model_status_card(is_trained: bool, samples: int, accuracy: str, trained_at:
   </div>
   {acc_html}{samples_html}{date_html}
 </div></div>
-''')
+"""
+    )
 
 
 def filter_chip(label: str, count: int = 0, active: bool = False) -> str:
@@ -178,12 +207,14 @@ def filter_chip(label: str, count: int = 0, active: bool = False) -> str:
     bd = "var(--ac-bd)" if active else "var(--meta-bd)"
     tc = "var(--ac-txt)" if active else "var(--meta-t)"
     count_html = f'<span style="margin-left:4px;opacity:0.7;">({count})</span>' if count else ""
-    return _flat(f'''
+    return _flat(
+        f"""
 <span style="display:inline-flex;align-items:center;gap:4px;background:{bg};border:1px solid {bd};
 border-radius:50px;padding:4px 12px;font-size:0.75rem;font-weight:600;color:{tc} !important;">
   {label}{count_html}
 </span>
-''')
+"""
+    )
 
 
 # ══════════════════════════════════════════════════════════════════

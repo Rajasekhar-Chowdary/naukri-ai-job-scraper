@@ -3,6 +3,7 @@ Background job scheduler for 24/7 continuous scraping.
 Uses APScheduler to run multiple scrapers on configurable intervals
 and sends notifications when new high-score jobs are found.
 """
+
 import os
 import time
 import threading
@@ -120,6 +121,7 @@ class JobScheduler:
                 return
 
             import pandas as pd
+
             df = pd.DataFrame(unscored)
             df = self.ai_model.predict_with_breakdown(df)
 
@@ -128,15 +130,18 @@ class JobScheduler:
                 score = int(row.get("AI_Score", 0))
                 url = row.get("url", "")
                 if score >= 85:
-                    top_jobs.append({
-                        "title": row.get("title", ""),
-                        "company": row.get("company", ""),
-                        "score": score,
-                        "url": url,
-                        "source": source,
-                    })
+                    top_jobs.append(
+                        {
+                            "title": row.get("title", ""),
+                            "company": row.get("company", ""),
+                            "score": score,
+                            "url": url,
+                            "source": source,
+                        }
+                    )
                 # Update DB with score
                 from src.database import update_job_scores
+
                 update_job_scores(url, row.to_dict())
 
             if top_jobs and self.notifier:
@@ -156,6 +161,7 @@ class JobScheduler:
 
 
 # ── Standalone runner ─────────────────────────────────────────────
+
 
 def run_scheduler_foreground(config: Optional[Dict] = None):
     """Run the scheduler in the main thread (for Docker/containers)."""

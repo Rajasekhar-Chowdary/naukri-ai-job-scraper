@@ -3,6 +3,7 @@ Notification dispatcher for new high-score jobs.
 Supports Email (SMTP), Discord webhooks, and Slack webhooks.
 Reads credentials from environment variables (never hardcoded).
 """
+
 import os
 import json
 from typing import List, Dict
@@ -75,11 +76,13 @@ class Notifier:
                 return
             embeds = []
             for j in jobs[:5]:
-                embeds.append({
-                    "title": j["title"],
-                    "description": f"**{j['company']}** | Score: {j['score']}\n{j['url']}",
-                    "color": 0x10b981,
-                })
+                embeds.append(
+                    {
+                        "title": j["title"],
+                        "description": f"**{j['company']}** | Score: {j['score']}\n{j['url']}",
+                        "color": 0x10B981,
+                    }
+                )
             payload = {
                 "content": f"🚀 Dream Hunt found **{len(jobs)}** new top-match job(s)!",
                 "embeds": embeds,
@@ -104,13 +107,15 @@ class Notifier:
                 }
             ]
             for j in jobs[:5]:
-                blocks.append({
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*<{j['url']}|{j['title']}>*\n{j['company']} | Score: {j['score']}",
-                    },
-                })
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*<{j['url']}|{j['title']}>*\n{j['company']} | Score: {j['score']}",
+                        },
+                    }
+                )
             requests.post(webhook, json={"blocks": blocks}, timeout=10)
             logger.info("Slack alert sent.")
         except Exception as e:

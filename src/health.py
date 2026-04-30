@@ -1,4 +1,5 @@
 """Health check endpoint for monitoring and load balancers."""
+
 import os
 import sqlite3
 from src.database import _db_path

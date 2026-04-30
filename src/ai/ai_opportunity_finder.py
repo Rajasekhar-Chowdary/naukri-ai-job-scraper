@@ -39,7 +39,7 @@ def _get_encoder() -> SentenceTransformer:
     global _encoder_instance
     if _encoder_instance is None:
         logger.info("Loading SentenceTransformer (all-MiniLM-L6-v2)...")
-        _encoder_instance = SentenceTransformer('all-MiniLM-L6-v2')
+        _encoder_instance = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("SentenceTransformer loaded.")
     return _encoder_instance
 
@@ -49,12 +49,13 @@ def _get_pdf_cache() -> Tuple[str, str]:
     global _pdf_cache, _pdf_mtime_hash
 
     # Use absolute paths relative to project root so this works from any cwd
-    _data_dir = os.path.join(_PROJECT_ROOT, 'data')
+    _data_dir = os.path.join(_PROJECT_ROOT, "data")
     data_pdfs = (
-        [os.path.join(_data_dir, f) for f in os.listdir(_data_dir) if f.endswith('.pdf')]
-        if os.path.exists(_data_dir) else []
+        [os.path.join(_data_dir, f) for f in os.listdir(_data_dir) if f.endswith(".pdf")]
+        if os.path.exists(_data_dir)
+        else []
     )
-    root_pdfs = [os.path.join(_PROJECT_ROOT, f) for f in os.listdir(_PROJECT_ROOT) if f.endswith('.pdf')]
+    root_pdfs = [os.path.join(_PROJECT_ROOT, f) for f in os.listdir(_PROJECT_ROOT) if f.endswith(".pdf")]
     pdf_files = sorted(list(set(data_pdfs + root_pdfs)))
 
     if not pdf_files:
@@ -70,9 +71,10 @@ def _get_pdf_cache() -> Tuple[str, str]:
     pdf_text = ""
     try:
         from pypdf import PdfReader
+
         for pdf_file in pdf_files:
             try:
-                with open(pdf_file, 'rb') as f:
+                with open(pdf_file, "rb") as f:
                     reader = PdfReader(f)
                     for page in reader.pages:
                         text = page.extract_text()
@@ -98,8 +100,7 @@ class JobAIModel:
     W_DESC = 0.25
     W_EXP = 0.15
 
-    def __init__(self, config_path: str = "config/profile_config.json",
-                 model_path: str = "data/job_ai_model.pkl"):
+    def __init__(self, config_path: str = "config/profile_config.json", model_path: str = "data/job_ai_model.pkl"):
         self.config_path = config_path
         self.model_path = model_path
         self.encoder = _get_encoder()
@@ -127,7 +128,7 @@ class JobAIModel:
     def _load_config(self) -> dict:
         try:
             if os.path.exists(self.config_path):
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path, "r") as f:
                     return json.load(f)
         except Exception as e:
             logger.error(f"Error loading config: {e}")
@@ -159,8 +160,11 @@ class JobAIModel:
         if self.target_roles:
             return " ".join(r.lower() for r in self.target_roles)
         # Fallback: extract role-like keywords
-        role_keywords = [s for s in self.profile_skills
-                         if any(kw in s for kw in ['analyst', 'engineer', 'developer', 'lead', 'manager', 'architect'])]
+        role_keywords = [
+            s
+            for s in self.profile_skills
+            if any(kw in s for kw in ["analyst", "engineer", "developer", "lead", "manager", "architect"])
+        ]
         return " ".join(role_keywords) if role_keywords else " ".join(self.profile_skills[:10])
 
     def _load_keywords(self) -> str:
@@ -204,21 +208,21 @@ class JobAIModel:
     def _get_field(row, key: str):
         """Safely get a field from a row (Series or dict), trying both cases."""
         if isinstance(row, pd.Series):
-            return str(row.get(key, row.get(key.lower(), '')))
-        return str(row.get(key, row.get(key.lower(), '')))
+            return str(row.get(key, row.get(key.lower(), "")))
+        return str(row.get(key, row.get(key.lower(), "")))
 
     def _prepare_text(self, row) -> str:
         """Safely combine job fields into a single text string."""
-        title = self._get_field(row, 'Title')
-        desc = self._get_field(row, 'Description')
-        skills = self._get_field(row, 'Skills')
+        title = self._get_field(row, "Title")
+        desc = self._get_field(row, "Description")
+        skills = self._get_field(row, "Skills")
         return f"{title} {desc} {skills}".lower()
 
     @staticmethod
     def parse_experience(exp_str) -> List[int]:
         if not exp_str or exp_str in ("Not mentioned", "N/A", "nan", ""):
             return [0, 99]
-        nums = re.findall(r'\d+', str(exp_str))
+        nums = re.findall(r"\d+", str(exp_str))
         if len(nums) >= 2:
             return [int(nums[0]), int(nums[1])]
         elif len(nums) == 1:
@@ -230,17 +234,17 @@ class JobAIModel:
 
     def _skill_match_score(self, row) -> float:
         """Score 0-100: what % of the job's required skills match the user's profile."""
-        job_skills_raw = self._get_field(row, 'Skills')
-        job_desc = self._get_field(row, 'Description').lower()
+        job_skills_raw = self._get_field(row, "Skills")
+        job_desc = self._get_field(row, "Description").lower()
 
-        if not job_skills_raw or job_skills_raw in ('N/A', 'nan'):
+        if not job_skills_raw or job_skills_raw in ("N/A", "nan"):
             # Fall back to description keyword matching
             if not job_desc:
                 return 50.0  # neutral
             matched = sum(1 for s in self.profile_skills if s in job_desc)
             return min(100, (matched / max(len(self.profile_skills[:15]), 1)) * 100)
 
-        job_skills = [s.strip().lower() for s in job_skills_raw.split(',') if s.strip()]
+        job_skills = [s.strip().lower() for s in job_skills_raw.split(",") if s.strip()]
         if not job_skills:
             return 50.0
 
@@ -256,7 +260,7 @@ class JobAIModel:
 
     def _title_relevance_score(self, row) -> float:
         """Score 0-100: how relevant is the job title to target roles."""
-        title = self._get_field(row, 'Title').lower()
+        title = self._get_field(row, "Title").lower()
         if not title:
             return 50.0
 
@@ -267,8 +271,8 @@ class JobAIModel:
 
     def _description_semantic_score(self, row) -> float:
         """Score 0-100: semantic similarity of job description to focused profile."""
-        desc = self._get_field(row, 'Description')
-        if not desc or desc in ('N/A', 'nan'):
+        desc = self._get_field(row, "Description")
+        if not desc or desc in ("N/A", "nan"):
             return 50.0
 
         desc_emb = self.encoder.encode([desc.lower()[:1000]], show_progress_bar=False)
@@ -278,7 +282,7 @@ class JobAIModel:
 
     def _experience_fit_score(self, row) -> float:
         """Score 0-100: smooth gradient experience fit (not binary penalty)."""
-        job_min, job_max = self.parse_experience(self._get_field(row, 'Experience'))
+        job_min, job_max = self.parse_experience(self._get_field(row, "Experience"))
         user_exp = self.min_experience
 
         # If job has no experience requirement, neutral
@@ -311,8 +315,8 @@ class JobAIModel:
             return []
 
         # Batch encode all titles and descriptions at once
-        titles = [str(row.get('Title', '')).lower() for _, row in df.iterrows()]
-        descs = [str(row.get('Description', '')).lower()[:1000] for _, row in df.iterrows()]
+        titles = [str(row.get("Title", "")).lower() for _, row in df.iterrows()]
+        descs = [str(row.get("Description", "")).lower()[:1000] for _, row in df.iterrows()]
 
         title_embs = self.encoder.encode(titles, show_progress_bar=False)
         desc_embs = self.encoder.encode(descs, show_progress_bar=False)
@@ -330,18 +334,17 @@ class JobAIModel:
             desc_score = max(0, min(100, float(desc_sims[i]) * 100))
             exp = self._experience_fit_score(row)
 
-            final = (skill * self.W_SKILL +
-                     title_score * self.W_TITLE +
-                     desc_score * self.W_DESC +
-                     exp * self.W_EXP)
+            final = skill * self.W_SKILL + title_score * self.W_TITLE + desc_score * self.W_DESC + exp * self.W_EXP
 
-            results.append({
-                "skill_match": round(skill, 1),
-                "title_relevance": round(title_score, 1),
-                "description_semantic": round(desc_score, 1),
-                "experience_fit": round(exp, 1),
-                "final": int(max(0, min(100, final))),
-            })
+            results.append(
+                {
+                    "skill_match": round(skill, 1),
+                    "title_relevance": round(title_score, 1),
+                    "description_semantic": round(desc_score, 1),
+                    "experience_fit": round(exp, 1),
+                    "final": int(max(0, min(100, final))),
+                }
+            )
 
         return results
 
@@ -372,19 +375,39 @@ class JobAIModel:
             logger.info(f"Removed {before - len(df)} duplicate feedback entries.")
         return df
 
-    def train(self, applied_csv: str = "data/applied_jobs.csv",
-              rejected_csv: str = "data/rejected_jobs.csv") -> Tuple[bool, str]:
+    def train(
+        self, applied_csv: str = "data/applied_jobs.csv", rejected_csv: str = "data/rejected_jobs.csv"
+    ) -> Tuple[bool, str]:
         df_list = []
+
+        # 1. Try legacy CSV files first (backward compatibility)
         for path, label in [(applied_csv, 1), (rejected_csv, 0)]:
             if os.path.exists(path):
                 try:
                     df = pd.read_csv(path)
                     if not df.empty:
                         df = self._deduplicate_feedback(df)
-                        df['label'] = label
+                        df["label"] = label
                         df_list.append(df)
                 except Exception as e:
                     logger.error(f"Error reading {path}: {e}")
+
+        # 2. Fallback: read from SQLite database
+        if not df_list:
+            try:
+                from src.database import get_feedback_for_training
+
+                applied_df, rejected_df = get_feedback_for_training()
+                if applied_df is not None and not applied_df.empty:
+                    applied_df = self._deduplicate_feedback(applied_df)
+                    applied_df["label"] = 1
+                    df_list.append(applied_df)
+                if rejected_df is not None and not rejected_df.empty:
+                    rejected_df = self._deduplicate_feedback(rejected_df)
+                    rejected_df["label"] = 0
+                    df_list.append(rejected_df)
+            except Exception as e:
+                logger.error(f"Error reading feedback from database: {e}")
 
         if not df_list:
             return False, "No feedback data available yet. Please rate some jobs first."
@@ -392,16 +415,15 @@ class JobAIModel:
         df_train = pd.concat(df_list, ignore_index=True)
         df_train = self._deduplicate_feedback(df_train)
 
-        if len(df_train['label'].unique()) < 2:
+        if len(df_train["label"].unique()) < 2:
             return False, "Need both approved (👍) and rejected (👎) jobs to train the AI."
 
         texts = [self._prepare_text(row) for _, row in df_train.iterrows()]
-        y = df_train['label'].values
+        y = df_train["label"].values
 
         try:
             X_text = self.encoder.encode(texts, show_progress_bar=False)
-            X_exp = np.array([self.parse_experience(row.get('Experience', ''))
-                              for _, row in df_train.iterrows()])
+            X_exp = np.array([self.parse_experience(row.get("Experience", "")) for _, row in df_train.iterrows()])
 
             # Add multi-signal features
             signal_features = []
@@ -415,12 +437,7 @@ class JobAIModel:
 
             # Train with class balancing
             clf = RandomForestClassifier(
-                n_estimators=200,
-                max_depth=12,
-                min_samples_leaf=2,
-                class_weight="balanced",
-                random_state=42,
-                n_jobs=-1
+                n_estimators=200, max_depth=12, min_samples_leaf=2, class_weight="balanced", random_state=42, n_jobs=-1
             )
             clf.fit(X_final, y)
 
@@ -432,8 +449,12 @@ class JobAIModel:
                 X_shuf, y_shuf = X_final[shuffle_idx], y[shuffle_idx]
                 split = int(len(y_shuf) * 0.8)
                 clf_val = RandomForestClassifier(
-                    n_estimators=200, max_depth=12, min_samples_leaf=2,
-                    class_weight="balanced", random_state=42, n_jobs=-1
+                    n_estimators=200,
+                    max_depth=12,
+                    min_samples_leaf=2,
+                    class_weight="balanced",
+                    random_state=42,
+                    n_jobs=-1,
                 )
                 clf_val.fit(X_shuf[:split], y_shuf[:split])
                 val_acc = clf_val.score(X_shuf[split:], y_shuf[split:])
@@ -464,8 +485,7 @@ class JobAIModel:
             try:
                 texts = [self._prepare_text(row) for _, row in df.iterrows()]
                 X_text = self.encoder.encode(texts, show_progress_bar=False)
-                X_exp = np.array([self.parse_experience(row.get('Experience', ''))
-                                  for _, row in df.iterrows()])
+                X_exp = np.array([self.parse_experience(row.get("Experience", "")) for _, row in df.iterrows()])
                 signal_features = []
                 for _, row in df.iterrows():
                     skill = self._skill_match_score(row)
@@ -510,25 +530,77 @@ class JobAIModel:
                 pass
 
         df = df.copy()
-        df['AI_Score'] = scores
-        df['Score_Skill'] = [b['skill_match'] for b in breakdowns]
-        df['Score_Title'] = [b['title_relevance'] for b in breakdowns]
-        df['Score_Desc'] = [b['description_semantic'] for b in breakdowns]
-        df['Score_Exp'] = [b['experience_fit'] for b in breakdowns]
+        df["AI_Score"] = scores
+        df["Score_Skill"] = [b["skill_match"] for b in breakdowns]
+        df["Score_Title"] = [b["title_relevance"] for b in breakdowns]
+        df["Score_Desc"] = [b["description_semantic"] for b in breakdowns]
+        df["Score_Exp"] = [b["experience_fit"] for b in breakdowns]
         # Keep legacy columns for backward compat
-        df['Score_Semantic'] = [b['description_semantic'] for b in breakdowns]
-        df['Score_ExpPenalty'] = [int(100 - b['experience_fit']) for b in breakdowns]
+        df["Score_Semantic"] = [b["description_semantic"] for b in breakdowns]
+        df["Score_ExpPenalty"] = [int(100 - b["experience_fit"]) for b in breakdowns]
         return df
 
     # ── Upskill Recommendations ───────────────────────────────────
 
+    def predict_gig_scores(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Score freelance gigs with a simplified multi-signal model.
+        Gigs don't have experience requirements, so we weight:
+        - Skill match: 40%
+        - Title relevance: 30%
+        - Description semantic: 30%
+        """
+        if df.empty:
+            return df
+
+        titles = [str(row.get("Title", "")).lower() for _, row in df.iterrows()]
+        descs = [str(row.get("Description", "")).lower()[:1000] for _, row in df.iterrows()]
+
+        title_embs = self.encoder.encode(titles, show_progress_bar=False)
+        desc_embs = self.encoder.encode(descs, show_progress_bar=False)
+
+        profile_title_emb = self._get_title_emb()
+        profile_desc_emb = self._get_profile_summary_emb()
+
+        title_sims = np.dot(title_embs, profile_title_emb.T).flatten()
+        desc_sims = np.dot(desc_embs, profile_desc_emb.T).flatten()
+
+        scores = []
+        for i, (_, row) in enumerate(df.iterrows()):
+            skill = self._skill_match_score(row)
+            title_score = max(0, min(100, float(title_sims[i]) * 100))
+            desc_score = max(0, min(100, float(desc_sims[i]) * 100))
+
+            # Budget bonus: if budget info exists, add small boost
+            budget_bonus = 0
+            budget_min = row.get("Budget Min")
+            if pd.notna(budget_min) and budget_min is not None:
+                budget_bonus = 5  # Small boost for gigs with clear budgets
+
+            final = skill * 0.40 + title_score * 0.30 + desc_score * 0.30 + budget_bonus
+            final = min(100, final)
+
+            scores.append(
+                {
+                    "AI_Score": int(final),
+                    "Score_Skill": round(skill, 1),
+                    "Score_Budget": round(budget_bonus, 1),
+                    "Score_Desc": round(desc_score, 1),
+                }
+            )
+
+        df = df.copy()
+        for col in ["AI_Score", "Score_Skill", "Score_Budget", "Score_Desc"]:
+            df[col] = [s[col] for s in scores]
+        return df
+
     def get_upskill_recommendations(self, df: pd.DataFrame, top_n: int = 5) -> List[Tuple[str, int]]:
-        if 'Skills' not in df.columns or df.empty:
+        if "Skills" not in df.columns or df.empty:
             return []
 
         market_skills = Counter()
-        for skills_str in df['Skills'].dropna():
-            for s in str(skills_str).split(','):
+        for skills_str in df["Skills"].dropna():
+            for s in str(skills_str).split(","):
                 s = s.strip().lower()
                 if len(s) >= 2:
                     market_skills[s] += 1
@@ -550,12 +622,12 @@ class JobAIModel:
 
     def get_skill_coverage(self, df: pd.DataFrame) -> Dict:
         """Analyze how well user's skills cover the market."""
-        if 'Skills' not in df.columns or df.empty:
+        if "Skills" not in df.columns or df.empty:
             return {"coverage": 0, "total_unique": 0, "matched": 0, "missing": []}
 
         market_skills = Counter()
-        for skills_str in df['Skills'].dropna():
-            for s in str(skills_str).split(','):
+        for skills_str in df["Skills"].dropna():
+            for s in str(skills_str).split(","):
                 s = s.strip().lower()
                 if len(s) >= 2:
                     market_skills[s] += 1
